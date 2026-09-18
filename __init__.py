@@ -26,6 +26,105 @@ class RippleTimelineMarker:
         return (int(frame_idx),)
 
 
+
+class RippleCutMode:
+    """Lazy selector for the optional second cut reference.
+
+    OFF: only the first-frame branch is evaluated.
+    ON: the edited cut-frame branch is evaluated.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "enabled": ("BOOLEAN", {
+                    "default": False,
+                    "label_on": "YES - USE CUT GUIDE",
+                    "label_off": "NO - FIRST FRAME ONLY",
+                }),
+                "first_frame": ("IMAGE", {"lazy": True}),
+                "cut_frame": ("IMAGE", {"lazy": True}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "BOOLEAN")
+    RETURN_NAMES = ("image", "enabled")
+    FUNCTION = "select"
+    CATEGORY = "Ripple"
+
+    def check_lazy_status(self, enabled, first_frame=None, cut_frame=None):
+        selected_name = "cut_frame" if enabled else "first_frame"
+        selected_value = cut_frame if enabled else first_frame
+        return [selected_name] if selected_value is None else []
+
+    def select(self, enabled, first_frame=None, cut_frame=None):
+        image = cut_frame if enabled else first_frame
+        if image is None:
+            raise ValueError("Selected Ripple cut-mode image input is missing")
+        return (image, bool(enabled))
+
+
+class RippleLazyGuideSwitch:
+    """Selects first-guide or cut-guide conditioning without evaluating the unused branch."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "enabled": ("BOOLEAN", {"forceInput": True}),
+                "first_positive": ("CONDITIONING", {"lazy": True}),
+                "first_negative": ("CONDITIONING", {"lazy": True}),
+                "first_latent": ("LATENT", {"lazy": True}),
+                "cut_positive": ("CONDITIONING", {"lazy": True}),
+                "cut_negative": ("CONDITIONING", {"lazy": True}),
+                "cut_latent": ("LATENT", {"lazy": True}),
+            }
+        }
+
+    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT")
+    RETURN_NAMES = ("positive", "negative", "latent")
+    FUNCTION = "select"
+    CATEGORY = "Ripple"
+
+    def check_lazy_status(
+        self,
+        enabled,
+        first_positive=None,
+        first_negative=None,
+        first_latent=None,
+        cut_positive=None,
+        cut_negative=None,
+        cut_latent=None,
+    ):
+        if enabled:
+            values = {
+                "cut_positive": cut_positive,
+                "cut_negative": cut_negative,
+                "cut_latent": cut_latent,
+            }
+        else:
+            values = {
+                "first_positive": first_positive,
+                "first_negative": first_negative,
+                "first_latent": first_latent,
+            }
+        return [name for name, value in values.items() if value is None]
+
+    def select(
+        self,
+        enabled,
+        first_positive=None,
+        first_negative=None,
+        first_latent=None,
+        cut_positive=None,
+        cut_negative=None,
+        cut_latent=None,
+    ):
+        if enabled:
+            return (cut_positive, cut_negative, cut_latent)
+        return (first_positive, first_negative, first_latent)
+
 def _resolve_input_file(filename: str) -> str:
     filename = str(filename or "").strip()
     if not filename:
@@ -105,9 +204,13 @@ async def ripple_export_frame(request):
 
 NODE_CLASS_MAPPINGS = {
     "RippleTimelineMarker": RippleTimelineMarker,
+    "RippleCutMode": RippleCutMode,
+    "RippleLazyGuideSwitch": RippleLazyGuideSwitch,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "RippleTimelineMarker": "Ripple Cut Timeline",
+    "RippleCutMode": "Ripple Cut Scene Toggle",
+    "RippleLazyGuideSwitch": "Ripple Lazy Guide Switch",
 }
 WEB_DIRECTORY = "./web"
 
